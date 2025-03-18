@@ -340,35 +340,35 @@ else ifeq ($(BR2_SOC_INGENIC_A1N),y)
 	SOC_RAM := 256
 	BR2_SOC_INGENIC_A1 := y
 	BR2_XBURST_2 := y
-	UBOOT_BOARDNAME := "isvp_a1_n_sfc0nor"
+	UBOOT_BOARDNAME := "isvp_a1_all_lzma_sfc0nor"
 else ifeq ($(BR2_SOC_INGENIC_A1NT),y)
 	SOC_FAMILY := a1
 	SOC_MODEL := a1nt
 	SOC_RAM := 256
 	BR2_SOC_INGENIC_A1 := y
 	BR2_XBURST_2 := y
-	UBOOT_BOARDNAME := "isvp_a1_nt_sfc0nor"
+	UBOOT_BOARDNAME := "isvp_a1_all_lzma_sfc0nor"
 else ifeq ($(BR2_SOC_INGENIC_A1X),y)
 	SOC_FAMILY := a1
 	SOC_MODEL := a1x
 	SOC_RAM := 256
 	BR2_SOC_INGENIC_A1 := y
 	BR2_XBURST_2 := y
-	UBOOT_BOARDNAME := "isvp_a1_x_sfc0nor"
+	UBOOT_BOARDNAME := "isvp_a1_all_lzma_sfc0nor"
 else ifeq ($(BR2_SOC_INGENIC_A1L),y)
 	SOC_FAMILY := a1
 	SOC_MODEL := a1l
 	SOC_RAM := 128
 	BR2_SOC_INGENIC_A1 := y
 	BR2_XBURST_2 := y
-	UBOOT_BOARDNAME := "isvp_a1_l_sfc0nor"
+	UBOOT_BOARDNAME := "isvp_a1_all_lzma_sfc0nor"
 else ifeq ($(BR2_SOC_INGENIC_A1A),y)
 	SOC_FAMILY := a1
 	SOC_MODEL := a1a
 	SOC_RAM := 512
 	BR2_SOC_INGENIC_A1 := y
 	BR2_XBURST_2 := y
-	UBOOT_BOARDNAME := "isvp_a1_a_sfc0nor"
+	UBOOT_BOARDNAME := "isvp_a1_all_lzma_sfc0nor"
 endif
 
 SOC_FAMILY_CAPS := $(shell echo $(SOC_FAMILY) | tr a-z A-Z)
@@ -530,6 +530,8 @@ else ifeq ($(BR2_SENSOR_IMX327),y)
 	SENSOR_MODEL := imx327
 else ifeq ($(BR2_SENSOR_IMX335),y)
 	SENSOR_MODEL := imx335
+else ifeq ($(BR2_SENSOR_IMX664),y)
+	SENSOR_MODEL := imx664
 else ifeq ($(BR2_SENSOR_JXF22),y)
 	SENSOR_MODEL := jxf22
 else ifeq ($(BR2_SENSOR_JXF23),y)
