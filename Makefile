@@ -96,7 +96,7 @@ SIZE_16K := 16384
 SIZE_8K := 8192
 SIZE_4K := 4096
 
-ALIGN_BLOCK := $(SIZE_32K)
+ALIGN_BLOCK := $(SIZE_64K)
 
 U_BOOT_GITHUB_URL := https://github.com/gtxaspec/u-boot-ingenic/releases/download/latest
 
