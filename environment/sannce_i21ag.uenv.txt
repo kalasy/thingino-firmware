@@ -13,7 +13,5 @@ gpio_motor_v=67 66 82 49
 gpio_scl=13 58
 gpio_sda=12 57
 gpio_speaker=63
-motor_maxstep_h=3600
-motor_maxstep_v=3600
 motor_speed=600
 wlan_module=mt7601sta
