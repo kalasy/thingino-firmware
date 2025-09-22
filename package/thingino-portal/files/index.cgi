@@ -2,11 +2,24 @@
 <%
 . /usr/share/common
 
+hostname=$(hostname)
 image_id=$(awk -F= '/IMAGE_ID/{print $2}' $OS_RELEASE_FILE)
 build_id=$(awk -F= '/BUILD_ID/{print $2}' $OS_RELEASE_FILE | tr -d '"')
-hostname=$(hostname)
 timestamp=$(date +%s)
 ttl_in_sec=600
+
+sanitize() {
+	echo $1 | sed -E 's/([`"])/\\\1/g'
+}
+
+html_safe() {
+	text=$*
+	text=${text//&/\&amp;}
+	text=${text//\`/\&grave;}
+	text=${text//\"/\&quot;}
+	text=${text// /\&nbsp;}
+	echo $text
+}
 
 get_request() {
 	[ "GET" = "$REQUEST_METHOD" ]
@@ -45,9 +58,7 @@ set_error() {
 	POST_mode="edit"
 }
 
-if $DEBUG; then
 debug_file=/tmp/portaldebug
-:>$debug_file
 post_request && echo "POST request" >> $debug_file
 post_request_to_review && echo "POST request to review" >> $debug_file
 post_request_to_save && echo "POST request to save" >> $debug_file
@@ -55,14 +66,12 @@ post_request_expired && echo "POST request expired" >> $debug_file
 get_request && echo "GET request" >> $debug_file
 get_request_with_wlan_credentials && echo "GET request with WLAN credentials" >> $debug_file
 get_request_with_wlanap_credentials && echo "GET request with WLAN AP credentials" >> $debug_file
-fi
 
 if post_request_expired; then
 	http_header="HTTP/1.1 303 See Other"
 	http_redirect="Location: $SCRIPT_NAME"
 
 elif post_request; then
-	frombrowser="$POST_frombrowser"
 	hostname="$POST_hostname"
 	rootpass="$POST_rootpass"
 	rootpkey="$POST_rootpkey"
@@ -73,7 +82,7 @@ elif post_request; then
 	wlan_pass="$POST_wlan_pass"
 	wlan_ssid="$POST_wlan_ssid"
 
-        bad_chars=$(echo "$hostname" | sed 's/[0-9A-Z\.-]//ig')
+	bad_chars=$(echo "$hostname" | sed 's/[0-9A-Z\.-]//ig')
 	[ -z "$bad_chars" ] || set_error "Hostname cannot contain $bad_chars"
 
 	if [ -z "$error_message" ] && post_request_to_save; then
@@ -84,14 +93,19 @@ elif post_request; then
 		# update wlan settings in environment
 		temp_file=$(mktemp -u)
 		if [ "true" = "$wlanap_enabled" ]; then
-			printf "wlanap_enabled %s\nwlanap_ssid %s\nwlanap_pass %s\n" \
-				"$wlanap_enabled" "$wlanap_ssid" "$wlanap_pass" > $temp_file
+			wlanap_pass=$(convert_psk "$wlanap_ssid" "$wlanap_pass")
+			printf "wlanap_ssid %s\nwlanap_pass %s\n" \
+				"$wlanap_ssid" "$wlanap_pass" > $temp_file
 		else
+			wlan_pass=$(convert_psk "$wlan_ssid" "$wlan_pass")
 			printf "wlan_ssid %s\nwlan_pass %s\n" \
 				"$wlan_ssid" "$wlan_pass" > $temp_file
 		fi
 		fw_setenv -s $temp_file
 		rm -f $temp_file
+
+		# set wlanap status
+		conf s wlanap_enabled $wlanap_enabled
 
 		# update env dump
 		refresh_env_dump
@@ -104,7 +118,7 @@ elif post_request; then
 		echo "$rootpkey" | tr -d '\r' | sed 's/^ //g' > /root/.ssh/authorized_keys
 
 		# update interface for onvif
-		sed -i "s/^ifs=.*$/ifs=wlan0/" /etc/onvif.conf
+		jct /etc/onvif.json set ifs wlan0
 
 		# done
 		http_header="HTTP/1.1 303 See Other"
@@ -116,8 +130,6 @@ elif post_request; then
 	fi
 
 elif get_request; then
-	[ -z "$frombrowser" ] && frombrowser="true"
-
 	http_header="HTTP/1.1 200 OK"
 	http_redirect=""
 fi
@@ -185,9 +197,8 @@ h2 {font-size:1.3rem}
 </div>
 
 <p>To start, locate the <b><%= $wlanap_ssid %></b> wireless network on your device,
- connect using your password <b><%= $wlanap_pass %></b>, then open the web interface
- at <b>http://thingino.local/</b> using login <b>root</b> and the password you have
- just set up for that user.</p>
+ connect using your password then open the web interface at <b>http://thingino.local/</b>
+ using login <b>root</b> and the password you have just set up for that user.</p>
 
 <% elif get_request || post_request_to_edit; then %>
 
@@ -211,12 +222,6 @@ h2 {font-size:1.3rem}
 <textarea class="form-control bg-light text-dark text-break" name="rootpkey" id="rootpkey" rows="3"><%= $rootpkey %></textarea>
 </div>
 </div>
-<div class="my-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" role="switch" id="frombrowser" name="frombrowser" value="true"<% [ "false" != $frombrowser ] && echo " checked" %>>
-<label class="form-check-label" for="frombrowser">Pick up time zone from the browser</label>
-</div>
-</div>
 <ul class="nav nav-underline mb-3" role="tablist">
 <li class="nav-item" role="presentation"><button type="button" role="tab" class="nav-link active" aria-current="page" data-bs-toggle="tab" data-bs-target="#wlan-tab-pane" id="wlan-tab">Wi-Fi Network</button></li>
 <li class="nav-item" role="presentation"><button type="button" role="tab" class="nav-link" data-bs-toggle="tab" data-bs-target="#wlanap-tab-pane" id="wlanap-tab">Wi-Fi Access Point</button></li>
@@ -224,12 +229,12 @@ h2 {font-size:1.3rem}
 <div class="tab-content" id="wireless-tabs">
 <div class="tab-pane fade show active" id="wlan-tab-pane" role="tabpanel" aria-labelledby="wlan-tab" tabindex="0">
 <div class="mb-2">
-<label class="form-label">Wireless Network Name (SSID)</label>
+<label class="form-label">Wi-Fi Network Name/SSID <span class="small text-white">(case-sensitive)</span></label>
 <input class="form-control bg-light text-dark" type="text" id="wlan_ssid" name="wlan_ssid" value="<%= $wlan_ssid %>" autocapitalize="none" required>
 <div class="invalid-feedback">Please enter network name</div>
 </div>
 <div class="mb-2">
-<label class="form-label">Wireless Network Password</label>
+<label class="form-label">Wi-Fi Network Password <span class="small text-white">(case-sensitive)</span></label>
 <input class="form-control bg-light text-dark" type="text" id="wlan_pass" name="wlan_pass" value="<%= $wlan_pass %>" autocapitalize="none" minlength="8" pattern=".{8,64}" required>
 <div class="invalid-feedback">Please enter a password 8 - 64 characters</div>
 </div>
@@ -243,12 +248,12 @@ h2 {font-size:1.3rem}
 </span>
 </div>
 <div class="mb-2">
-<label class="form-label">Wireless AP Network Name (SSID)</label>
+<label class="form-label">Wi-Fi AP Network SSID <span class="small text-white">(case-sensitive)</span></label>
 <input class="form-control bg-light text-dark" type="text" id="wlanap_ssid" name="wlanap_ssid" value="<%= $wlanap_ssid %>" autocapitalize="none">
 <div class="invalid-feedback">Please enter network name</div>
 </div>
 <div class="mb-2">
-<label class="form-label">Wireless AP Network Password</label>
+<label class="form-label">Wi-Fi AP Network Password <span class="small text-white">(case-sensitive)</span></label>
 <input class="form-control bg-light text-dark" type="text" id="wlanap_pass" name="wlanap_pass" value="<%= $wlanap_pass %>" autocapitalize="none" minlength="8" pattern=".{8,64}">
 <div class="invalid-feedback">Please enter a password 8 - 64 characters</div>
 </div>
@@ -261,10 +266,7 @@ h2 {font-size:1.3rem}
 </form>
 
 <script>
-document.querySelector("#frombrowser").addEventListener("change", ev => {
-	const tz = document.querySelector("#timezone")
-	tz.value = (ev.target.checked) ? Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ') : ""
-});
+document.querySelector("#timezone").value = Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ')
 document.querySelector("#wlanap_enabled").addEventListener("change", ev => {
 	document.querySelector('#wlan_pass').required = !ev.target.checked
 	document.querySelector('#wlan_ssid').required = !ev.target.checked
@@ -273,8 +275,8 @@ document.querySelector("#wlanap_enabled").addEventListener("change", ev => {
 });
 (() => {
 	const forms = document.querySelectorAll('.needs-validation');
-	Array.from(forms).forEach(form => { form.addEventListener('submit', event => {
-		if (!form.checkValidity()) { event.preventDefault(); event.stopPropagation(); }
+	Array.from(forms).forEach(form => { form.addEventListener('submit', ev => {
+		if (!form.checkValidity()) { ev.preventDefault(); ev.stopPropagation(); }
 		form.classList.add('was-validated')}, false)
 	})
 })()
@@ -295,7 +297,7 @@ document.querySelector("#wlanap_enabled").addEventListener("change", ev => {
 <dt>Wireless Network SSID</dt>
 <dd><%= $wlan_ssid %></dd>
 <dt>Wireless Network Password</dt>
-<dd class="text-break"><%= $wlan_pass %></dd>
+<dd class="text-break"><% html_safe $wlan_pass %></dd>
 <% fi %>
 <dt>User <b>root</b> Password</dt>
 <dd><%= $rootpass %></dd>
@@ -315,7 +317,6 @@ document.querySelector("#wlanap_enabled").addEventListener("change", ev => {
 <div class="col my-2">
 <form action="<%= $SCRIPT_NAME %>" method="POST">
 <input type="hidden" name="mode" value="edit">
-<input type="hidden" name="frombrowser" value="<%= $frombrowser %>">
 <input type="hidden" name="hostname" value="<%= $hostname %>">
 <input type="hidden" name="rootpass" value="<%= ${rootpass//\"/&quot;} %>">
 <input type="hidden" name="rootpkey" value="<%= $rootpkey %>">

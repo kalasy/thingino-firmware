@@ -1,7 +1,7 @@
 WIFI_ATBM6031X_SITE_METHOD = git
 WIFI_ATBM6031X_SITE = https://github.com/gtxaspec/atbm-wifi
 WIFI_ATBM6031X_SITE_BRANCH = master
-WIFI_ATBM6031X_VERSION = 2b62a41895d748d79b3b29256b8dabe65e001310
+WIFI_ATBM6031X_VERSION = 5c4dd2c6febaa924a81551f5ce8d3e71c728cc91
 # $(shell git ls-remote $(WIFI_ATBM6031X_SITE) $(WIFI_ATBM6031X_SITE_BRANCH) | head -1 | cut -f1)
 
 WIFI_ATBM6031X_LICENSE = GPL-2.0
@@ -27,19 +27,26 @@ define WIFI_ATBM6031X_LINUX_CONFIG_FIXUPS
 endef
 
 LINUX_CONFIG_LOCALVERSION = $(shell awk -F "=" '/^CONFIG_LOCALVERSION=/ {print $$2}' $(BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE))
+
 define WIFI_ATBM6031X_INSTALL_CONFIGS
-	$(INSTALL) -m 755 -d $(TARGET_DIR)/lib/modules/3.10.14$(LINUX_CONFIG_LOCALVERSION)
+	$(INSTALL) -m 0755 -d $(TARGET_DIR)/lib/modules/3.10.14$(LINUX_CONFIG_LOCALVERSION)
 	touch $(TARGET_DIR)/lib/modules/3.10.14$(LINUX_CONFIG_LOCALVERSION)/modules.builtin.modinfo
-	$(INSTALL) -m 755 -d $(TARGET_DIR)/usr/share/wifi
-	$(INSTALL) -m 644 -t $(TARGET_DIR)/usr/share/wifi $(WIFI_ATBM_WIFI_PKGDIR)/files/*.txt
-	$(INSTALL) -m 755 -d $(TARGET_DIR)/lib/firmware
-	$(INSTALL) -m 644 $(@D)/firmware/firmware_lite_sdio.bin $(TARGET_DIR)/lib/firmware/$(call qstrip,$(ATBM6031X_MODULE_NAME))_fw.bin
+
+	$(INSTALL) -m 0755 -d $(TARGET_DIR)/usr/share/wifi
+	$(INSTALL) -m 0644 -t $(TARGET_DIR)/usr/share/wifi \
+		$(WIFI_ATBM_WIFI_PKGDIR)/files/*.txt
+
+	$(INSTALL) -D -m 0644 $(@D)/firmware/firmware_lite_sdio.bin \
+		$(TARGET_DIR)/lib/firmware/$(call qstrip,$(ATBM6031X_MODULE_NAME))_fw.bin
 endef
+
 WIFI_ATBM6031X_POST_INSTALL_TARGET_HOOKS += WIFI_ATBM6031X_INSTALL_CONFIGS
 
 define WIFI_ATBM6031X_COPY_CONFIG
-	$(INSTALL) -m 644 $(@D)/configs/atbm6031x.config $(@D)/.config
+	$(INSTALL) -D -m 0644 $(@D)/configs/atbm6031x.config \
+		$(@D)/.config
 endef
+
 WIFI_ATBM6031X_PRE_CONFIGURE_HOOKS += WIFI_ATBM6031X_COPY_CONFIG
 
 $(eval $(kernel-module))

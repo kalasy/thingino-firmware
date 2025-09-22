@@ -1,7 +1,9 @@
 #!/bin/haserl
 <%in _common.cgi %>
 <%
-[ -f /bin/wg ] || redirect_to "/" "danger" "Your camera does not seem to support WireGuard"
+if [ ! -f "/bin/wg" ]; then
+	redirect_to "/" "danger" "Your camera does not seem to support WireGuard"
+fi
 
 page_title="WireGuard VPN"
 
@@ -122,7 +124,7 @@ if (wgStatus == 1) {
 	$('#wg-ctrl').classList.add("alert-success");
 	$('#wg-ctrl .btn').classList.add("btn-success");
 	$('#wg-ctrl p:first-child').textContent = "Please click the button below to switch" +
-		" WireGuarg VPN on. Make sure all settings are correct!";
+		" WireGuard VPN on. Make sure all settings are correct!";
 	$('#wg-ctrl label span').textContent = "ON";
 }
 

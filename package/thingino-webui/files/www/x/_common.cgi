@@ -8,6 +8,7 @@ STR_EIGHT_OR_MORE_CHARS=" pattern=\".{8,}\" title=\"8 characters or longer\""
 STR_NOT_SUPPORTED="not supported on this system"
 STR_PASSWORD_TO_PSK="Plain-text password will be automatically converted to a PSK upon submission"
 STR_SUPPORTS_STRFTIME="Supports <a href=\"https://strftime.net/\" target=\"_blank\">strftime</a> format"
+STR_USER_TEXT_FMT="Supports %hostname, %ipaddress, %fps, %bps"
 
 pagename=$(basename "$SCRIPT_NAME")
 pagename="${pagename%%.*}"
@@ -20,10 +21,8 @@ signature_file="/tmp/signature.txt"
 
 sysinfo_file="/tmp/sysinfo.txt"
 
-webui_log="/tmp/webui.log"
-
 # read from files
-ws_token="$(cat /run/prudynt_websocket_token)"
+ws_token="$(cat /run/prudynt/websocket_token)"
 
 # name, text
 error_if_empty() {
@@ -50,8 +49,8 @@ alerts_read() {
 		for line in $(cat $file); do
 			echo "<p>$line</p>"
 		done
-		echo "<button type=\"button\" class=\"btn btn-close\" data-bs-dismiss=\"alert\"" \
-		 " aria-label=\"Close\"></button></div>"
+		button_close
+		echo "</div>"
 		rm $file
 	done
 	IFS=$IFS_ORIG
@@ -74,8 +73,17 @@ time_http() {
 	time_gmt "%a, %d %b %Y %T %Z" "$1"
 }
 
+button_close() {
+	echo "<button type=\"button\" class=\"btn btn-close\" data-bs-dismiss=\"alert\" aria-label=\"Close\"></button>"
+}
+
 button_download() {
 	echo "<a href=\"dl2.cgi?log=$1\" class=\"btn btn-primary\">Download log</a>"
+}
+
+button_help() {
+	echo "<div class=\"switch float-end\"><img type=\"button\" src=\"/a/help.svg\" class=\"img-fluid\"" \
+	" data-bs-toggle=\"modal\" data-bs-target=\"#helpModal\" alt=\"Help\" style=\"max-height:1.5rem\"></div>"
 }
 
 button_refresh() {
@@ -118,6 +126,14 @@ button_sync_time() {
 		text="Synchronize time from NTP server"
 	fi
 	echo "<button id=\"sync-time\" type=\"button\" class=\"btn btn-secondary mb-3\">$text</button>"
+}
+
+# 1: name
+# 2: status
+button_test() {
+	echo "<div class=\"switch float-end\">" \
+	"<button type=\"button\" id=\"$1_toggle\" data-pin=\"$1\" data-status=\"$2\"" \
+	" class=\"btn btn-sm btn-outline-secondary m-0 led-status\">Test</button></div>"
 }
 
 check_file_exist() {
@@ -447,10 +463,6 @@ wiki_page() {
 	" href=\"https://github.com/themactep/thingino-firmware/wiki/$1\">Thingino Wiki</a></p>"
 }
 
-log() {
-	echo "$1" >> $webui_log
-}
-
 menu() {
 	local css i name
 	local CSS_ENABLED=" class=\"enabled\""
@@ -460,7 +472,7 @@ menu() {
 		if [ "service" = "$1" ]; then
 			case "$name" in
 				motion)
-					prudyntcfg get motion.enabled | grep -q true && css=$CSS_ENABLED
+					jct /etc/prudynt.json get motion.enabled | grep -q true && css=$CSS_ENABLED
 					;;
 				mqtt)
 					[ -f /bin/mosquitto_pub ] || continue
@@ -548,11 +560,6 @@ Location: $1
 
 "
 	exit 0
-}
-
-refresh_env_dump() {
-	fw_printenv | sort | sed -E 's/=(.*)$/="\1"/' > "$ENV_DUMP_FILE"
-	. $ENV_DUMP_FILE
 }
 
 report_error() {
@@ -715,8 +722,8 @@ update_caminfo() {
 	fi
 
 	# prudynt values
-	#rtsp_endpoint_ch0=$(prudyntcfg get stream0.rtsp_endpoint | tr -d '"')
-	#rtsp_endpoint_ch1=$(prudyntcfg get stream1.rtsp_endpoint | tr -d '"')
+	#rtsp_endpoint_ch0=$(jct /etc/prudynt.json get stream0.rtsp_endpoint | tr -d '"')
+	#rtsp_endpoint_ch1=$(jct /etc/prudynt.json get stream1.rtsp_endpoint | tr -d '"')
 
 	# create a sourceable file
 	for v in flash_size flash_size_mb flash_type network_address network_cidr network_default_interface network_dhcp network_dns_1 network_dns_2 network_gateway network_hostname network_interfaces network_macaddr network_netmask overlay_root rtsp_endpoint_ch0 rtsp_endpoint_ch1 soc_family soc_model sensor_fps_max sensor_fps_min sensor_model tz_data tz_name uboot_version ui_password; do

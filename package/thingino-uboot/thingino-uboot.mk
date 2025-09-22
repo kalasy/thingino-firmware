@@ -312,7 +312,8 @@ endif
 # legal-info finds it
 define THINGINO_UBOOT_COPY_OLD_LICENSE_FILE
 	if [ -f $(@D)/COPYING ]; then \
-		$(INSTALL) -m 0644 -D $(@D)/COPYING $(@D)/Licenses/gpl-2.0.txt; \
+		$(INSTALL) -D -m 0644 $(@D)/COPYING \
+			$(@D)/Licenses/gpl-2.0.txt; \
 	fi
 endef
 
@@ -325,6 +326,12 @@ define THINGINO_UBOOT_DROP_YYLLOC
 	|xargs -0 -r $(SED) '/^YYLTYPE yylloc;$$/d'
 endef
 THINGINO_UBOOT_POST_PATCH_HOOKS += THINGINO_UBOOT_DROP_YYLLOC
+
+# Copy sha1.h to tools directory for tools build
+define THINGINO_UBOOT_COPY_SHA1_HEADER
+	cp $(@D)/include/sha1.h $(@D)/tools/sha1.h
+endef
+THINGINO_UBOOT_POST_PATCH_HOOKS += THINGINO_UBOOT_COPY_SHA1_HEADER
 
 ifneq ($(ARCH_XTENSA_OVERLAY_FILE),)
 define THINGINO_UBOOT_XTENSA_OVERLAY_EXTRACT
@@ -631,14 +638,11 @@ THINGINO_UBOOT_PRE_BUILD_HOOKS += THINGINO_GENERATE_UBOOT_ENV
 #
 # Patch uboot headers with env data for device if uenv.txt exists
 #
-ifeq ($(UB_ENV_FINAL_TXT),)
-$(warning Environment file not found)
-else
 define PATCH_DEV_ENV
-	$(BR2_EXTERNAL)/scripts/uboot-device-env.sh $(UB_ENV_FINAL_TXT) $(@D)/include/configs/isvp_common.h
+	$(BR2_EXTERNAL)/scripts/uboot-device-env.sh $(OUTPUT_DIR)/uenv.txt \
+		$(@D)/include/configs/isvp_common.h
 endef
 THINGINO_UBOOT_PRE_BUILD_HOOKS += PATCH_DEV_ENV
-endif
 
 #
 # Check U-Boot board name (for legacy) or the defconfig/custom config

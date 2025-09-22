@@ -1,3 +1,6 @@
+# This is a configuration-only package that doesn't download source
+THINGINO_KOPT_SOURCE =
+
 ################ JZ_MAC #########################
 ifeq ($(BR2_PACKAGE_THINGINO_KOPT_JZ_MAC_V12),y)
 define THINGINO_KOPT_LINUX_CONFIG_FIXUPS_JZ_MAC_V12
@@ -343,6 +346,14 @@ define THINGINO_KOPT_LINUX_CONFIG_FIXUPS_GADGET_SERIAL
 endef
 endif
 
+################### AUDIO #### #########################
+
+ifeq ($(BR2_PACKAGE_THINGINO_KOPT_DMIC),y)
+define THINGINO_KOPT_LINUX_CONFIG_FIXUPS_AUDIO_DMIC
+	$(call KCONFIG_ENABLE_OPT,CONFIG_JZ_TS_DMIC)
+endef
+endif
+
 ################   NETFILTER   #########################
 ifeq ($(BR2_PACKAGE_THINGINO_KOPT_NETFILTER),y)
 define THINGINO_KOPT_LINUX_CONFIG_FIXUPS_NETFILTER
@@ -417,6 +428,7 @@ define THINGINO_KOPT_LINUX_CONFIG_FIXUPS
 	$(call THINGINO_KOPT_LINUX_CONFIG_FIXUPS_EXTFS)
 	$(call THINGINO_KOPT_LINUX_CONFIG_FIXUPS_MMC_BOOT)
 	$(call THINGINO_KOPT_LINUX_CONFIG_FIXUPS_JZ_MAC_CLK)
+	$(call THINGINO_KOPT_LINUX_CONFIG_FIXUPS_AUDIO_DMIC)
 endef
 
 

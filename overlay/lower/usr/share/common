@@ -1,8 +1,15 @@
 #!/bin/sh
 
 ENV_DUMP_FILE="/tmp/environment"
+refresh_env_dump() {
+	# sanitize and dump environment variables
+	fw_printenv | sort | \
+		sed -E 's/([`"$])/\\\1/g' | \
+		sed -E 's/=(.*)$/="\1"/' \
+		> "$ENV_DUMP_FILE"
+}
 if [ ! -f "$ENV_DUMP_FILE" ]; then
-	fw_printenv | sort | sed -E 's/=(.*)$/="\1"/' > "$ENV_DUMP_FILE"
+	refresh_env_dump
 fi
 . "$ENV_DUMP_FILE"
 
@@ -15,7 +22,7 @@ fi
 PID=$$
 
 CRONTABS="/etc/cron/crontabs/root"
-CURL="curl --show-error --fail --connect-timeout 10 --max-time 30 --retry 3"
+CURL="curl --show-error --fail --connect-timeout 10 --max-time 30 --retry 3 --location --max-redirs 5"
 EMAIL_FORMAT='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
 HOSTNAME_FILE="/etc/hostname"
 HOSTS_FILE="/etc/hosts"
@@ -34,13 +41,13 @@ SOC_MODEL=$(soc -m)
 TZCODE_FILE="/etc/TZ"
 TZJSON_FILE="/usr/share/tz.json.gz"
 TZNAME_FILE="/etc/timezone"
-VBUFFER_FILE="/tmp/vbuffer.mov"
+VBUFFER_FILE="/tmp/vbuffer.mp4"
 WLANAP_MODE_FLAG="/run/wlanap_mode"
 
 DAEMON=${DAEMON:-$0}
 DAEMON_ARGS=${DAEMON_ARGS:-}
 DAEMON_PATH="/bin"
-DAEMON_SHORT=$(basename "${DAEMON%% *}" | sed -r 's/^[FKS]\d{2}//')
+DAEMON_SHORT=$(basename "${DAEMON%% *}" | sed -r 's/^[FKS][0-9][0-9]//')
 DAEMON_FULL="$(which $DAEMON_SHORT)"
 LOCK_FILE="/run/process-$PID.pid"
 PIDFILE="/run/$DAEMON_SHORT.pid"
@@ -50,6 +57,34 @@ if [ -r "$DAEMON_CONFIG" ]; then
 #	echo "Evaluating $DAEMON_CONFIG" >&2
 	. "$DAEMON_CONFIG"
 fi
+
+# test cases:
+# network={
+#        ssid="ssid"
+#        #psk="`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./"
+#        psk=2bc720c7bab24823e4b6ce3150ef1fcfee08a12f0be79f0352f7933bec8c53c5
+# }
+# network={
+#        ssid="ssid"
+#        #psk="~!@#$%^&*()_+QWERTYUIOP{}ASDFGHJKL:"ZXCVBNM<>?"
+#        psk=9268459e6347c6993772adedafd17a15b603c7232d80e91cab14585cfca3caf1
+# }
+
+# convert plain-text password to psd
+
+convert_psk() {
+	local psk tmpfile
+
+	if [ ${#2} -ge 64 ]; then
+		echo "$2"
+	else
+		tmpfile="/tmp/bogus.wpa"
+		wpa_passphrase "$1" "$2" > $tmpfile
+		psk=$(grep '^\s*psk=' $tmpfile | cut -d= -f2 | tail -n 1)
+		rm -f $tmpfile
+		echo "$psk"
+	fi
+}
 
 decrement_mac() {
 	local mac last_byte_dec
@@ -197,7 +232,7 @@ iface_mac_suffix() {
 }
 
 is_debug_mode() {
-	[ $((0 + debug)) -gt 0 ] || [ "true" = "$debug" ]
+	[ "0$((debug))" -gt 0 ] || [ "true" = "$debug" ]
 }
 
 is_streamer_disabled() {
@@ -238,10 +273,6 @@ print_release() {
 quit() {
 	echo "$1" >&2
 	exit 0
-}
-
-refresh_env_dump() {
-	fw_printenv | sort | sed -E 's/=(.*)$/="\1"/' > "$ENV_DUMP_FILE"
 }
 
 set_gpio() {
@@ -316,6 +347,38 @@ tag() {
 
 ts() {
 	date -u +"%F %T"
+}
+
+get_terminal_height() {
+	# Try multiple methods to get terminal height
+	height=""
+
+	# Method 1: stty size (most reliable in busybox/ash)
+	if command -v stty >/dev/null 2>&1; then
+		height=$(stty size 2>/dev/null | cut -d' ' -f1)
+	fi
+
+	# Method 2: tput lines (if available)
+	if [ -z "$height" ] && command -v tput >/dev/null 2>&1; then
+		height=$(tput lines 2>/dev/null)
+	fi
+
+	# Method 3: environment variable
+	if [ -z "$height" ] && [ -n "$LINES" ]; then
+		height=$LINES
+	fi
+
+	# Method 4: ttysize command (busybox)
+	if [ -z "$height" ] && command -v ttysize >/dev/null 2>&1; then
+		height=$(ttysize h 2>/dev/null)
+	fi
+
+	# Default fallback
+	if [ -z "$height" ] || [ "$height" -lt 10 ]; then
+		height=24
+	fi
+
+	echo "$height"
 }
 
 usage() {

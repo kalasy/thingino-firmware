@@ -5,11 +5,13 @@ page_title="Send to MQTT"
 
 [ -f /usr/bin/mosquitto_pub ] || redirect_to "/" "danger" "MQTT client is not a part of your firmware."
 
+camera_id=${network_macaddr//:/}
+
 defaults() {
-	default_for mqtt_client_id "${network_macaddr//:/}"
+	default_for mqtt_client_id $camera_id
 	default_for mqtt_port "1883"
 	default_for mqtt_topic "thingino/$mqtt_client_id"
-	default_for mqtt_message ""
+	default_for mqtt_message "{\"camera_id\": \"$camera_id\", \"timestamp\": \"%s\"}"
 }
 
 if [ "POST" = "$REQUEST_METHOD" ]; then
@@ -32,8 +34,8 @@ if [ "POST" = "$REQUEST_METHOD" ]; then
 		set_error_flag "MQTT topic should not contain spaces."
 	fi
 
-	if [ -n "$(echo $mqtt_topic | sed -r -n /[^a-zA-Z0-9/]/p)" ] || [ -n "$(echo $mqtt_snap_topic | sed -r -n /[^a-zA-Z0-9/]/p)" ]; then
-		set_error_flag "MQTT topic should not include non-ASCII characters."
+	if [ -n "$(echo $mqtt_topic | sed -r -n /[^a-zA-Z0-9/_-]/p)" ] || [ -n "$(echo $mqtt_snap_topic | sed -r -n /[^a-zA-Z0-9/_-]/p)" ]; then
+		set_error_flag "MQTT topic should not include non-ASCII characters or special characters like /, #, +, or space."
 	fi
 
 	if [ "true" = "$mqtt_send_snap" ] && [ -z "$mqtt_snap_topic" ]; then
@@ -86,6 +88,8 @@ defaults
 </div>
 <% button_submit %>
 </form>
+
+<button type="button" class="btn btn-dark border mb-2" title="Send to MQTT" data-sendto="mqtt">Test</button>
 
 <div class="alert alert-dark ui-debug d-none">
 <h4 class="mb-3">Debug info</h4>

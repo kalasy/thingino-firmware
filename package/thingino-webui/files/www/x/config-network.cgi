@@ -1,6 +1,8 @@
 #!/bin/haserl
 <%in _common.cgi %>
 <%
+# TODO: add an easy way to update NTP servers for static networking.
+
 page_title="Network"
 
 IFACES="eth0 wlan0 usb0"
@@ -11,17 +13,6 @@ for i in $IFACES; do
 		PARAMS="$PARAMS ${i}_$p"
 	done
 done
-
-# ssid, pass
-convert_psk() {
-	if [ ${#2} -lt 64 ]; then
-		local tmpfile=$(mktemp -u)
-		wpa_passphrase "$1" "$2" > $tmpfile
-		grep '^\s*psk=' $tmpfile | cut -d= -f2 | tail -n 1
-	else
-		echo "$2"
-	fi
-}
 
 disable_iface() {
 	sed -i "s/^auto /#auto /" /etc/network/interfaces.d/$1
@@ -133,14 +124,14 @@ setup_wireless_network() {
 	pass=$3
 	psk=$(convert_psk "$ssid" "$pass")
 
-	tempfile=$(mktemp)
+	temp_file=$(mktemp)
 	{
 		[ -n "$ssid"  ] && echo "wlan_ssid $ssid"
 		[ -n "$bssid" ] && echo "wlan_bssid $bssid"
 		[ -n "$psk"   ] && echo "wlan_pass $psk"
-	} > $tempfile
-	fw_setenv -s $tempfile
-	rm $tempfile
+	} > $temp_file
+	fw_setenv -s $temp_file
+	rm -f $temp_file
 	refresh_env_dump
 }
 
@@ -264,9 +255,10 @@ if [ "POST" = "$REQUEST_METHOD" ]; then
 	wlan0_pass="$POST_wlan0_pass"
 	wlan0_bssid="$POST_wlan0_bssid"
 
-	# TODO: handle WLAN AP settings
+	# set WLAN AP status
 	wlanap_ssid="$POST_wlanap_ssid"
 	wlanap_pass="$POST_wlanap_pass"
+	conf s wlanap_enabled $POST_wlanap_enabled
 
 	# validate wireless network credentials if not empty
 	if [ "true" = "$wlan0_enabled" ] && [ -n "$wlan0_ssid$wlan0_pass" ]; then
@@ -298,8 +290,6 @@ if [ "POST" = "$REQUEST_METHOD" ]; then
 			echo "$hostname" > /etc/hostname
 		[ "$hostname" = "$(hostname_in_hosts)" ] || \
 			sed -i "/^127.0.1.1/c127.0.1.1\t$hostname" /etc/hosts
-		[ "$hostname" = "$(hostname_in_release)" ] || \
-			sed -i "/^HOSTNAME/s/=.*$/=$hostname/" /etc/os-release
 		hostname "$hostname"
 
 		[ -z "$dns_1$dns_2" ] || \

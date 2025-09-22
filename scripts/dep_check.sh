@@ -3,30 +3,6 @@
 preinit_check() {
 echo "Running dependencies check..."
 
-# Checkg or whiptail
-if ! command -v whiptail >/dev/null 2>&1; then
-echo "'dialog' is not installed. It is required for this script to run."
-exit 1
-fi
-
-# Checkg or dialog
-if ! command -v dialog >/dev/null 2>&1; then
-echo "'dialog' is not installed. It is required for this script to run."
-exit 1
-fi
-
-# Check for gawk
-if ! command -v gawk >/dev/null 2>&1; then
-echo "Error: Please install gawk"
-exit 1
-fi
-
-# Check for mkimage from u-boot-tools
-if ! command -v mkimage >/dev/null 2>&1; then
-echo "Error: Please install mkimage from u-boot-tools"
-exit 1
-fi
-
 # Check if the current directory path contains spaces.
 case "$PWD" in
 *" "*)
@@ -120,7 +96,7 @@ if [ -f /etc/os-release ]; then
 			pkg_check_command="dpkg-query -W -f='\${Status}'"
 			pkg_install_cmd="apt-get install -y"
 			pkg_update_cmd="apt-get update"
-			packages="build-essential bc bison cpio cmake curl file flex gawk git libncurses-dev make rsync unzip u-boot-tools wget whiptail dialog"
+			packages="build-essential bc bison ccache cpio cmake curl file flex gawk git libncurses-dev make nano python3 python3-jsonschema rsync unzip u-boot-tools vim-tiny wget whiptail dialog"
 			;;
 		*)
 			case "$ID" in
@@ -130,35 +106,35 @@ if [ -f /etc/os-release ]; then
 					pkg_check_command="dpkg-query -W -f='\${Status}'"
 					pkg_install_cmd="apt-get install -y"
 					pkg_update_cmd="apt-get update"
-					packages="build-essential bc bison cpio cmake curl file flex gawk git libncurses-dev make rsync unzip u-boot-tools wget whiptail dialog"
+					packages="build-essential bc bison cpio cmake curl file flex gawk git libncurses-dev make nano rsync unzip u-boot-tools vim-tiny wget whiptail dialog"
 					;;
 				rhel|centos|fedora)
 					echo "RedHat-based"
 					pkg_manager="rpm"
-					pkg_check_command="rpm -q"
+					pkg_check_command="rpm -q --whatprovides"
 					pkg_install_cmd="dnf install -y"
-					packages="gcc make bc bison cpio cmake curl file flex gawk git ncurses-devel rsync unzip wget newt dialog"
+					packages="gcc make bc bison cpio cmake curl file flex gawk git nano ncurses-devel rsync unzip uboot-tools wget newt dialog"
 					;;
 				arch)
 					echo "Arch-based"
 					pkg_manager="pacman"
 					pkg_check_command="pacman -Q"
 					pkg_install_cmd="pacman -S --noconfirm"
-					packages="base-devel bc bison cpio cmake curl file flex gawk git ncurses make rsync unzip wget libnewt dialog"
+					packages="base-devel bc bison cpio cmake curl file flex gawk git nano ncurses make rsync unzip uboot-tools wget libnewt dialog"
 					;;
 				alpine)
 					echo "Alpine Linux"
 					pkg_manager="apk"
 					pkg_check_command="apk info -e"
 					pkg_install_cmd="apk add"
-					packages="bash build-base bc bison cpio cmake curl file flex gawk git ncurses-dev make rsync unzip wget newt dialog perl findutils grep"
+					packages="bash build-base bc bison cpio cmake curl file flex gawk git nano ncurses-dev make rsync unzip uboot-tools wget newt dialog perl findutils grep"
 					;;
 				opensuse*)
 					echo "OpenSUSE Tumbleweed"
 					pkg_manager="zypper"
 					pkg_check_command="zypper search -i"
 					pkg_install_cmd="zypper install -y"
-					packages="gcc make bc bison cpio cmake curl file flex gawk git ncurses-devel rsync unzip wget newt dialog perl findutils grep"
+					packages="gcc make bc bison cpio cmake curl file flex gawk git ncurses-devel rsync unzip u-boot-tools wget newt dialog perl findutils grep"
 					;;
 				*)
 					echo "Unsupported OS: $ID"
@@ -178,7 +154,15 @@ packages_to_install=""
 for pkg in $packages; do
 	case "$pkg_manager" in
 		dpkg)
-			if ! $pkg_check_command "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+			# Special case for vim-tiny: check if either vim-tiny or full vim is installed
+			if [ "$pkg" = "vim-tiny" ]; then
+				if ! $pkg_check_command "vim-tiny" 2>/dev/null | grep -q "install ok installed" && \
+				   ! $pkg_check_command "vim" 2>/dev/null | grep -q "install ok installed"; then
+					packages_to_install="$packages_to_install $pkg"
+				else
+					echo "Package vim-tiny or vim is installed"
+				fi
+			elif ! $pkg_check_command "$pkg" 2>/dev/null | grep -q "install ok installed"; then
 				packages_to_install="$packages_to_install $pkg"
 			else
 				echo "Package $pkg is installed"

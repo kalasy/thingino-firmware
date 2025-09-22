@@ -1,59 +1,56 @@
 #!/bin/sh
 
-die() { echo -e "\e[38;5;160m$@\e[0m" >&2; exit 1; }
-log() { echo "$1" >&2; }
+. /usr/share/common
 
-create_directory_for() {
-	dir="$(dirname "$1")"
-	[ -d "$dir" ] || mkdir -p "$dir"
-	[ -d "$dir" ] || die "Cannot create directory $dir"
-	[ -w "$dir" ] || die "Cannot write to $dir"
-}
+ensure_command "openRTSP"
+
+STREAMER_APP="prudynt"
+STREAMER_CONF_FILE="/etc/prudynt.json"
+
+SELF_NAME="$(basename "$0")"
+
+if ! is_streamer_running; then
+	echo_error "Streamer is not running"
+	exit 1
+fi
+
+if is_streamer_disabled; then
+	echo_error "Streamer disabled"
+	exit 1
+fi
 
 hesitate() {
-	echo "$1" >&2
+	echo_info "$1"
 	sleep 5
 	exit 0
 }
 
 fix_duration() {
-    if [ "$1" -eq 60 ]; then
-        echo $(expr "$1" - $(date +%S))
-    elif [ $(expr "$1" % 60) -eq 0 ]; then
-        m_inc=$(expr "$1" / 60)
-        mpart=$(expr "$m_inc" - $(expr $(date +%M) % "$m_inc"))
-        echo $(expr "$mpart" "*" 60)
-    else
-        echo "$1"
-    fi
-    #to do - handle cases different than 60 second durations or videos longer than an hour
+	if [ "$1" -eq 60 ]; then
+		echo $(expr "$1" - $(date +%S))
+	elif [ $(expr "$1" % 60) -eq 0 ]; then
+		m_inc=$(expr "$1" / 60)
+		mpart=$(expr "$m_inc" - $(expr $(date +%M) % "$m_inc"))
+		echo $(expr "$mpart" "*" 60)
+	else
+		echo "$1"
+	fi
+	# TODO: handle cases different than 60 second durations or videos longer than an hour
 }
 
 get_free_space() {
 	available_space=$(df -k "$record_mount" | sed 1d | tr -d '\n' | awk 'END{print $4}') # in KiB
-	log "Space available: $available_space KiB"
+	echo_info "Space available: $available_space KiB"
 }
 
 get_occupied_space() {
-        occupied_space=$(du -s "$record_storage" | awk '{print $1}') # in KiB
-	log "Space occupied: $occupied_space KiB"
+	occupied_space=$(du -s "$record_storage" | awk '{print $1}') # in KiB
+	echo_info "Space occupied: $occupied_space KiB"
 }
 
 # "parameter" "default"
 read_config() {
-	sed -nE "s/^.*$1\s*[:=]\s*\"?([^\"]+)\"?;.*$/\1/p" /etc/prudynt.cfg | head -1
-	[ -z "$_" ] || echo "$2"
-}
-
-# "default"
-read_fps() {
-	logcat | grep "fps" | head -1 | awk -F '[=,]' '{print $2}'
-	[ -z "$_" ] || echo "$1"
-}
-
-# "parameter" "default"
-read_size() {
-	logcat | grep "VBMCreatePool()-${stream_number}: w=" | head -1 | awk -F '[= ]' "{print \$$1}"
+	jct "$STREAMER_CONF_FILE" get "$1" | tr -d '"'
 	[ -z "$_" ] || echo "$2"
 }
 
@@ -70,7 +67,7 @@ has_files() {
 }
 
 show_help() {
-	log "Usage: $0 [<params>]
+	usage "[<params>]
 Where params are:
 	-u <string>  RTSP username
 	-p <string>  RTSP password
@@ -88,10 +85,7 @@ Where params are:
 "
 }
 
-pidof -o $$ record > /dev/null && die "is already running"
-
-CONFIG_FILE="/etc/web.conf"
-[ -f "$CONFIG_FILE" ] && . $CONFIG_FILE
+singleton "$0"
 
 RECORD_FLAG="/tmp/record.$$"
 
@@ -118,22 +112,58 @@ shift "$((OPTIND - 1))"
 record_mount=${record_mount%/}
 record_device_path=${record_device_path%/}
 
-[ -z "$record_mount"     ] && hesitate "Mountpoint record_mount is not set"
-mountpoint -q "$record_mount" || hesitate "Mountpoint $record_mount is not mounted"
-[ -w "$record_mount"     ] || hesitate "Mountpoint $record_mount is not writable"
-[ -z "$record_duration"  ] && record_duration=10
-[ -z "$record_filename"  ] && record_filename="%hostname/%Y/%m/%d/%H-%M-%S"
-[ -z "$record_videofmt"  ] && record_videofmt="mp4"
-rtsp_username=$(read_config "username" "thingino")
-rtsp_password=$(read_config "password" "thingino")
-[ -z "$stream_number"    ] && stream_number=0
-# FIXME: based on default stream endpoint name, won't work on custom endpoints
-stream_endpoint="ch$stream_number"
-[ -z "$stream_fps"       ] && stream_fps=$(read_fps "25")
-[ -z "$stream_height"    ] && stream_height=$(read_size "7" "1080")
-[ -z "$stream_width"     ] && stream_width=$(read_size "5" "1920")
+if [ -z "$record_mount" ]; then
+	hesitate "Mountpoint record_mount is not set"
+fi
 
-log "
+if ! mountpoint -q "$record_mount"; then
+	hesitate "Mountpoint $record_mount is not mounted"
+fi
+
+if [ ! -w "$record_mount" ]; then
+	hesitate "Mountpoint $record_mount is not writable"
+fi
+
+if [ -z "$record_duration" ]; then
+	record_duration=10
+fi
+
+if [ -z "$record_filename" ]; then
+	record_filename="%hostname/%Y/%m/%d/%H-%M-%S"
+fi
+
+if [ -z "$record_videofmt" ]; then
+	record_videofmt="mp4"
+fi
+
+if [ -z "$stream_number" ]; then
+	stream_number=0
+fi
+
+if [ -z "$stream_width" ]; then
+	stream_width=$(cat /run/prudynt/rtsp/stream${stream_number}/width)
+fi
+
+if [ -z "$stream_height" ]; then
+	stream_height=$(cat /run/prudynt/rtsp/stream${stream_number}/height)
+fi
+
+if [ -z "$stream_fps" ]; then
+	stream_fps=$(cat /run/prudynt/rtsp/stream${stream_number}/fps)
+fi
+
+if [ -z "$rtsp_username" ]; then
+	rtsp_username=$(read_config "rtsp.username" "thingino")
+fi
+
+if [ -z "$rtsp_password" ]; then
+	rtsp_password=$(read_config "rtsp.password" "thingino")
+fi
+
+stream_endpoint="$(cat /run/prudynt/rtsp/stream${stream_number}/endpoint)"
+rtsp_stream="rtsp://127.0.0.1/$stream_endpoint"
+
+echo_info "
 stream_number: $stream_number
 stream_endpoint: $stream_endpoint
 stream_fps: $stream_fps
@@ -141,72 +171,87 @@ stream_height: $stream_height
 stream_width: $stream_width
 "
 
-[ -z "$stream_number"   ] && die "Cannot determine stream humber"
-[ -z "$stream_endpoint" ] && die "Cannot determine stream endpoint"
-[ -z "$stream_fps"      ] && die "Cannot determine stream fps"
-[ -z "$stream_height"   ] && die "Cannot determine stream height"
-[ -z "$stream_width"    ] && die "Cannot determine stream width"
+if [ -z "$stream_number" ]; then
+	echo_error "Cannot determine stream humber"
+fi
+
+if [ -z "$stream_endpoint" ]; then
+	echo_error "Cannot determine stream endpoint"
+fi
+
+if [ -z "$stream_fps" ]; then
+	echo_error "Cannot determine stream fps"
+fi
+
+if [ -z "$stream_height" ]; then
+	echo_error "Cannot determine stream height"
+fi
+
+if [ -z "$stream_width" ]; then
+	echo_error "Cannot determine stream width"
+fi
 
 case "$record_videofmt" in
 	avi) vformat="-i" ;;
-	mov) vformat="-q -y -H" ;;
-	mp4) vformat="-4 -y -H" ;;
-	  *) die "Unknown video format $record_videofmt"
+	mkv) vformat="-x" ;;
+	mov) vformat="-q" ;;
+	mp4) vformat="-4" ;;
+	  *) echo_error "Unknown video format $record_videofmt"
 esac
 
 touch $RECORD_FLAG
 
 record_storage="$record_mount/$record_device_path"
-if [ ! -d "$record_storage" ]; then
-	log "Creating $record_storage"
-	mkdir -p "$record_storage" || die "Cannot create directory $record_storage"
-fi
-[ -w "$record_storage" ] || die "Cannot write to $record_storage"
+ensure_dir "$record_storage"
 
 record_limit_kb=$((record_limit * 1024 * 1024)) # GiB to KiB
 required_space=$((100 * record_duration)) # KiB
 
-while :; do
+while : ; do
 	[ -f $RECORD_FLAG ] || break
 
 	get_free_space
 	if [ "$available_space" -le "$required_space" ]; then
-		log "Space required: $required_space KiB"
-		log "Not enough space: $required_space > $available_space"
+		echo_info "Space required: $required_space KiB"
+		echo_warning "Not enough space: $required_space > $available_space"
 		while [ "$available_space" -le "$required_space" ]; do
 			remove_oldest_file_in "$record_storage"
 			get_free_space
-			has_files "$record_storage" || die "$record_mount is empty yet no space!"
+			if ! has_files "$record_storage"; then
+				echo_error "$record_mount is empty yet no space!"
+				exit 1
+			fi
 		done
 	fi
 
-	if [ "$record_limit_kb" -gt 0 ]; then
-		log "Space limit: $record_limit_kb KiB"
+	if [ "0$record_limit_kb" -gt 0 ]; then
+		echo_info "Space limit: $record_limit_kb KiB"
 		get_occupied_space
 		while [ "$((occupied_space + required_space))" -gt "$record_limit_kb" ]; do
-			log "Occupied space $occupied_space KiB exceeds limit $record_limit_kb KiB"
+			echo_warning "Occupied space $occupied_space KiB exceeds limit $record_limit_kb KiB"
 			remove_oldest_file_in "$record_storage"
 			get_occupied_space
-			has_files "$record_storage" || die "$record_mount is empty yet no space!"
+			if ! has_files "$record_storage"; then
+				echo_error "$record_mount is empty yet no space!"
+				exit 1
+			fi
 		done
 	fi
 
 	record_file="$record_storage/$(date +"$record_filename").$record_videofmt"
-	create_directory_for "$record_file"
+	ensure_dir "$(dirname $record_file)"
 
 	real_duration=$(fix_duration $record_duration)
 
-	log "openRTSP -u $rtsp_username $rtsp_password -w $stream_width -h $stream_height -f $stream_fps -d $real_duration $vformat -b 1048576 -t rtsp://[::1]/$stream_endpoint > $record_file"
-	timeout $((real_duration + 5)) openRTSP -u $rtsp_username $rtsp_password -w $stream_width -h $stream_height -f $stream_fps \
-		-d $real_duration $vformat -b 1048576 -t rtsp://[::1]/$stream_endpoint > "$record_file" 2> /dev/null
-
-
+	command="openRTSP -V -u $rtsp_username $rtsp_password -w $stream_width -h $stream_height -f $stream_fps -d $real_duration $vformat -b 1048576 -t $rtsp_stream > \"$record_file\""
+	echo_command "$command"
+	timeout $((real_duration + 5)) sh -c "$command" 2> /dev/null
 
 	[ "true" = "$one_time" ] && rm $RECORD_FLAG
 done
 
-log "Cannot find recording flag $RECORD_FLAG"
+echo_warning "Cannot find recording flag $RECORD_FLAG"
 [ -n "$LEDD_FLAG" ] && [ -f "$LEDD_FLAG" ] && rm $LEDD_FLAG
-log "Exit"
+echo_info "Exit"
 
 exit 0
